@@ -26,8 +26,22 @@ if [ "$current" -lt "$THRESHOLD_PCT" ]; then
   exit 0
 fi
 
+mapfile -t victims < <(
+  find /tmp -mindepth 1 -maxdepth 1 \
+    ! -name '.X11-unix' \
+    ! -name '.ICE-unix' \
+    ! -name '.XIM-unix' \
+    ! -name '.font-unix' \
+    ! -name 'systemd-private-*' \
+    -printf '%A@ %p\n' 2>/dev/null | sort -n | cut -d' ' -f2-
+)
+
+if [ "${#victims[@]}" -eq 0 ]; then
+  exit 0
+fi
+
 # Evict least-recently-used top-level entries until we are below TARGET_PCT
-while :; do
+for victim in "${victims[@]}"; do
   current="$(usage || echo 0)"
   current="${current:-0}"
 
@@ -39,18 +53,8 @@ while :; do
     break
   fi
 
-  victim="$(
-    find /tmp -mindepth 1 -maxdepth 1 \
-      ! -name '.X11-unix' \
-      ! -name '.ICE-unix' \
-      ! -name '.XIM-unix' \
-      ! -name '.font-unix' \
-      ! -name 'systemd-private-*' \
-      -printf '%A@ %p\n' 2>/dev/null | sort -n | head -n 1 | cut -d' ' -f2- || true
-  )"
-
-  if [ -z "${victim:-}" ]; then
-    break
+  if mountpoint -q -- "$victim" 2>/dev/null; then
+    continue
   fi
 
   rm -rf -- "$victim" || true
